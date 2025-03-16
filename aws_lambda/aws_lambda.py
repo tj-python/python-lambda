@@ -704,9 +704,13 @@ def update_function(
             Publish=True,
         )
 
-    # Wait for function to be updated
+    # Wait for function code to be updated
     waiter = client.get_waiter('function_updated')
+    print("Waiting for code update to complete...")
     waiter.wait(FunctionName=cfg.get("function_name"))
+
+    # Add a short delay to allow propagation
+    time.sleep(5)
 
     kwargs = {
         "FunctionName": cfg.get("function_name"),
@@ -745,7 +749,21 @@ def update_function(
             },
         )
 
-    ret = client.update_function_configuration(**kwargs)
+    # Retry configuration update in case of conflicts
+    retries = 5
+    for attempt in range(retries):
+        try:
+            print("Updating function configuration...")
+            ret = client.update_function_configuration(**kwargs)
+            break
+        except client.exceptions.ResourceConflictException as e:
+            print(f"Conflict detected. Retrying... ({attempt + 1}/{retries})")
+            time.sleep(10)  # Wait before retrying
+    else:
+        raise Exception(f"Failed to update function configuration after {retries} retries.")
+
+    # Add a short delay to allow propagation
+    time.sleep(5)
 
     concurrency = get_concurrency(cfg)
     if concurrency > 0:
